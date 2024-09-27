@@ -1,0 +1,91 @@
+import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+
+interface UserPayload {
+  id: string;
+  username: string;
+  email: string;
+}
+
+const userSchema = new mongoose.Schema(
+  {
+    username: {type: String, required: true, unique: true},
+    fullname: {type: String, required: true},
+    email: {type: String, required: true, unique: true},
+    password: {type: String, required: true},
+    refreshToken: {type: String},
+    verified: {type: Boolean, default: false},
+  },
+  {timestamps: true}
+);
+
+userSchema.pre('save', async function (next) {
+  const user = this;
+  if (!user.isModified('password')) return next();
+
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(user.password, salt);
+  next();
+});
+
+// Pre-findOneAndUpdate middleware to hash password
+userSchema.pre('findOneAndUpdate', async function (next) {
+  const update = this.getUpdate() as mongoose.UpdateQuery<any>;
+
+  if (update && update.password) {
+    try {
+      const salt = await bcrypt.genSalt(10);
+      update.password = await bcrypt.hash(update.password, salt);
+      this.setUpdate(update);
+    } catch (error) {
+      return next(error as mongoose.CallbackError);
+    }
+  }
+  next();
+});
+
+// Pre-updateOne middleware to hash password
+userSchema.pre('updateOne', async function (next) {
+  const update = this.getUpdate() as mongoose.UpdateQuery<any>;
+
+  if (update && update.password) {
+    try {
+      const salt = await bcrypt.genSalt(10);
+      update.password = await bcrypt.hash(update.password, salt);
+      this.setUpdate(update);
+    } catch (error) {
+      return next(error as mongoose.CallbackError);
+    }
+  }
+  next();
+});
+userSchema.methods.isPasswordCorrect = async function (
+  password: string | Buffer
+) {
+  return await bcrypt.compare(password, this.password);
+};
+
+userSchema.methods.generateAccessToken = async function () {
+  const payload: UserPayload = {
+    id: this._id,
+    username: this.username,
+    email: this.email,
+  };
+
+  return jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET!, {
+    expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+  });
+};
+
+userSchema.methods.generateRefreshToken = function () {
+  const payload: {id: string} = {
+    id: this._id,
+  };
+
+  return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET!, {
+    expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+  });
+};
+
+export const User = mongoose.model('User', userSchema);
