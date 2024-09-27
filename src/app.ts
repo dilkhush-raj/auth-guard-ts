@@ -21,7 +21,11 @@ app.use(express.json({limit: '16kb'}));
 app.use(express.static('public'));
 app.use(cookiePraser());
 
+// Routes imports
+import verifyRoute from './routes/verify.routes';
+
 // Routes setup
+app.use('/api/v1/verify', verifyRoute);
 app.get('/ping', (req, res) => {
   res.send({message: 'pong'});
 });
